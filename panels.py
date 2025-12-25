@@ -2,11 +2,11 @@ import bpy
 
 class SMART_RENAMER_PT_main_panel(bpy.types.Panel):
     """Creates a Panel in the 3D Viewport Sidebar"""
-    bl_label = "Smart Renamer AI"
+    bl_label = "Smart Renamer"
     bl_idname = "SMART_RENAMER_PT_main_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Smart AI"
+    bl_category = "Smart Renamer"
 
     def draw(self, context):
         layout = self.layout

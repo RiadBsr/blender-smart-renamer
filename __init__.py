@@ -3,11 +3,11 @@ from .operators import SMART_RENAMER_OT_analyze_rename
 from .panels import SMART_RENAMER_PT_main_panel
 
 bl_info = {
-    "name": "Smart Renamer AI",
-    "author": "Your Name",
+    "name": "Smart Renamer",
+    "author": "Riad Boussoura",
     "version": (1, 0),
     "blender": (2, 80, 0),
-    "location": "View3D > Sidebar > Smart AI",
+    "location": "View3D > Sidebar > Smart Renamer",
     "description": "Renames objects using Gemini Vision AI",
     "category": "Object",
 }
