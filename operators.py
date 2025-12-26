@@ -13,23 +13,31 @@ result_queue = queue.Queue()
 # task_queue: holds pending API requests to be processed sequentially
 task_queue = queue.Queue()
 
-def send_gemini_request(api_key, image_b64, naming_style, obj_name, retries=3):
+# Gemma 3 Family - High Throughput Chain
+# Each has ~30 RPM. Chaining them gives theoretical ~150 RPM.
+GEMMA_MODELS = [
+    "gemma-3-27b-it",
+    "gemma-3-12b-it",
+    "gemma-3-4b-it",
+    "gemma-3-2b-it",
+    "gemma-3-1b-it"
+]
+
+def send_gemini_request(api_key, image_b64, naming_style, obj_name, model_name):
     """
-    Helper function to perform the actual API request.
-    Returns a dict with keys: 'obj_name', 'new_name' (optional), 'error' (optional)
+    Sends request to specific model. Returns dict with result or error code.
     """
     try:
-        # Using 'gemini-flash-latest' alias for stability as per recent API updates
-        model_name = "gemini-flash-latest" 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key.strip()}"
         
         headers = {'Content-Type': 'application/json'}
         
+        # Updated prompt to be more robust for JSON parsing
         prompt_text = (
             f"Analyze this 3D object image. "
-            f"Return ONLY a JSON object {{'name': 'new_name'}} based on its visual appearance. "
+            f"Return ONLY a JSON object {{\"name\": \"new_name\"}} based on its visual appearance. "
             f"Adhere to naming convention: {naming_style}. "
-            f"Do not include markdown formatting or explanations."
+            f"Ensure the property name is enclosed in double quotes."
         )
         
         data = {
@@ -54,49 +62,80 @@ def send_gemini_request(api_key, image_b64, naming_style, obj_name, retries=3):
                  return {'obj_name': obj_name, 'error': "API returned no candidates. Safety filter?"}
 
             text_response = result['candidates'][0]['content']['parts'][0]['text']
-            text_response = text_response.replace('```json', '').replace('```', '').strip()
-            name_data = json.loads(text_response)
-            new_name = name_data.get('name', 'Unknown_Object')
             
-            return {'obj_name': obj_name, 'new_name': new_name}
-            
+            # Robust Parsing Logic
+            try:
+                # 1. Clean Markdown
+                clean_text = text_response.replace('```json', '').replace('```', '').strip()
+                
+                # 2. Find JSON boundaries
+                start_idx = clean_text.find('{')
+                end_idx = clean_text.rfind('}')
+                
+                if start_idx != -1 and end_idx != -1:
+                    clean_text = clean_text[start_idx:end_idx+1]
+                
+                new_name_data = json.loads(clean_text)
+                return {'obj_name': obj_name, 'new_name': new_name_data.get('name', obj_name)}
+                
+            except json.JSONDecodeError:
+                # Fallback for single quotes or malformed JSON
+                import ast
+                try:
+                    new_name_data = ast.literal_eval(clean_text)
+                    return {'obj_name': obj_name, 'new_name': new_name_data.get('name', obj_name)}
+                except:
+                    return {'obj_name': obj_name, 'error': f"JSON Parse Error: {clean_text[:50]}..."}
+
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            if retries > 0:
-                wait_time = 10  # Wait 10 seconds before retrying
-                print(f"Smart Renamer: 429 Limit hit for '{obj_name}'. Retrying in {wait_time}s... ({retries} left)")
-                time.sleep(wait_time)
-                return send_gemini_request(api_key, image_b64, naming_style, obj_name, retries=retries-1)
-            else:
-                return {'obj_name': obj_name, 'error': "API Rate Limit Exceeded (429) after retries."}
-        elif e.code == 404:
-            return {'obj_name': obj_name, 'error': f"API 404: Model '{model_name}' not found."}
-        else:
-            return {'obj_name': obj_name, 'error': f"API Error {e.code}: {e.reason}"}
+            return {'obj_name': obj_name, 'status_code': 429} # Special signal for rate limit
+        return {'obj_name': obj_name, 'error': f"API Error {e.code}: {e.reason}"}
     except Exception as e:
-        return {'obj_name': obj_name, 'error': f"Network/Parse Error: {str(e)}"}
+        return {'obj_name': obj_name, 'error': str(e)}
 
 def batch_worker(api_key, naming_style):
-    """
-    Worker thread that processes the task queue sequentially.
-    """
     print("Smart Renamer: Batch worker started.")
+    
+    # Start with the best model
+    current_model_index = 0
+    
     while not task_queue.empty():
-        task = task_queue.get()
-        obj_name = task['obj_name']
-        image_b64 = task['image_b64']
+        item = task_queue.get()
+        obj_name = item['obj_name']
+        image_b64 = item['image_b64']
         
-        print(f"Smart Renamer: Processing '{obj_name}'...")
+        # Try to process
+        success = False
+        retry_count = 0
         
-        # Process the request
-        result = send_gemini_request(api_key, image_b64, naming_style, obj_name)
-        result_queue.put(result)
+        while not success and retry_count < len(GEMMA_MODELS) + 1:
+            current_model = GEMMA_MODELS[current_model_index]
+            print(f"Smart Renamer: Processing '{obj_name}' using {current_model}...")
+            
+            result = send_gemini_request(api_key, image_b64, naming_style, obj_name, current_model)
+            
+            if result.get('status_code') == 429:
+                print(f"Smart Renamer: Rate limit hit on {current_model}. Downgrading...")
+                
+                # Move to next model in chain
+                current_model_index += 1
+                
+                # If we ran out of models, wait and reset to top
+                if current_model_index >= len(GEMMA_MODELS):
+                    print("Smart Renamer: All models exhausted. Waiting 10s...")
+                    time.sleep(10)
+                    current_model_index = 0
+                
+                retry_count += 1
+                # Loop continues immediately with new model
+            else:
+                # Success or other error
+                success = True
+                result_queue.put(result)
         
         task_queue.task_done()
-        
-        # Rate Limiting: Sleep between requests if there are more items
-        if not task_queue.empty():
-            time.sleep(4.0) # 4 seconds delay to stay under 15 RPM (Free Tier)
+        # No sleep here! We go as fast as possible.
 
     print("Smart Renamer: Batch worker finished.")
 
@@ -152,13 +191,13 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         # Determine objects to process
         objects_to_process = []
         if scope == 'ACTIVE':
-            if context.active_object:
+            if context.active_object and context.active_object.type == 'MESH':
                 objects_to_process.append(context.active_object)
         elif scope == 'SELECTED':
-            objects_to_process = [o for o in context.selected_objects]
+            objects_to_process = [o for o in context.selected_objects if o.type == 'MESH']
             
         if not objects_to_process:
-            self.report({'WARNING'}, "No objects selected")
+            self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
             
         # Register timer if not already running
