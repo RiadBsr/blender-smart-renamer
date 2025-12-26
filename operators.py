@@ -23,7 +23,7 @@ GEMMA_MODELS = [
     "gemma-3-1b-it"
 ]
 
-def send_gemini_request(api_key, image_b64, naming_style, obj_name, model_name):
+def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name, context_text=""):
     """
     Sends request to specific model. Returns dict with result or error code.
     """
@@ -34,21 +34,28 @@ def send_gemini_request(api_key, image_b64, naming_style, obj_name, model_name):
         
         # Updated prompt to be more robust for JSON parsing
         prompt_text = (
-            f"Analyze this 3D object image. "
+            f"Analyze these 3D object images. The first image is an isolated view, the second shows the object in context (highlighted). "
             f"Return ONLY a JSON object {{\"name\": \"new_name\"}} based on its visual appearance. "
             f"Adhere to naming convention: {naming_style}. "
             f"Ensure the property name is enclosed in double quotes."
         )
         
+        if context_text:
+            prompt_text += f" Additional Context: {context_text}"
+        
+        parts = [{"text": prompt_text}]
+        for img_b64 in images_b64:
+            if img_b64:
+                parts.append({
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": img_b64
+                    }
+                })
+
         data = {
             "contents": [{
-                "parts": [
-                    {"text": prompt_text},
-                    {"inline_data": {
-                        "mime_type": "image/png",
-                        "data": image_b64
-                    }}
-                ]
+                "parts": parts
             }]
         }
         
@@ -103,7 +110,8 @@ def batch_worker(api_key, naming_style):
     while not task_queue.empty():
         item = task_queue.get()
         obj_name = item['obj_name']
-        image_b64 = item['image_b64']
+        images_b64 = item['images_b64']
+        context_text = item.get('context', "")
         
         # Try to process
         success = False
@@ -113,7 +121,7 @@ def batch_worker(api_key, naming_style):
             current_model = GEMMA_MODELS[current_model_index]
             print(f"Smart Renamer: Processing '{obj_name}' using {current_model}...")
             
-            result = send_gemini_request(api_key, image_b64, naming_style, obj_name, current_model)
+            result = send_gemini_request(api_key, images_b64, naming_style, obj_name, current_model, context_text)
             
             if result.get('status_code') == 429:
                 print(f"Smart Renamer: Rate limit hit on {current_model}. Downgrading...")
@@ -181,6 +189,7 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         
         naming_style = scene.smart_renamer_naming_style
         scope = scene.smart_renamer_scope
+        context_text = getattr(scene, "smart_renamer_context", "")
         
         if not api_key:
             self.report({'ERROR'}, "Please configure API Key in Addon Preferences")
@@ -207,17 +216,21 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         # 1. Capture all images first (Main Thread)
         tasks_added = 0
         for obj in objects_to_process:
-            image_path = utils.take_isolated_screenshot(obj, context)
-            if not image_path:
+            image_iso_path = utils.take_isolated_screenshot(obj, context)
+            image_ctx_path = utils.take_context_screenshot(obj, context)
+            
+            if not image_iso_path or not image_ctx_path:
                 print(f"Skipping {obj.name}: Image capture failed.")
                 continue
                 
-            image_b64 = utils.image_to_base64(image_path)
+            image_iso_b64 = utils.image_to_base64(image_iso_path)
+            image_ctx_b64 = utils.image_to_base64(image_ctx_path)
             
             # Add to task queue
             task_queue.put({
                 'obj_name': obj.name,
-                'image_b64': image_b64
+                'images_b64': [image_iso_b64, image_ctx_b64],
+                'context': context_text
             })
             tasks_added += 1
             

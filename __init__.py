@@ -59,6 +59,12 @@ def register():
         ],
         default='ACTIVE'
     )
+    
+    bpy.types.Scene.smart_renamer_context = bpy.props.StringProperty(
+        name="Context",
+        description="Additional context for the AI (e.g., 'Sci-fi game assets', 'Low poly style')",
+        default=""
+    )
 
 def unregister():
     if hasattr(bpy.types.Scene, "smart_renamer_api_key"):
@@ -67,6 +73,8 @@ def unregister():
         del bpy.types.Scene.smart_renamer_naming_style
     if hasattr(bpy.types.Scene, "smart_renamer_scope"):
         del bpy.types.Scene.smart_renamer_scope
+    if hasattr(bpy.types.Scene, "smart_renamer_context"):
+        del bpy.types.Scene.smart_renamer_context
     
     bpy.utils.unregister_class(SMART_RENAMER_PT_main_panel)
     bpy.utils.unregister_class(SMART_RENAMER_OT_analyze_rename)

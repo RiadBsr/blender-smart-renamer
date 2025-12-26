@@ -23,6 +23,7 @@ class SMART_RENAMER_PT_main_panel(bpy.types.Panel):
         # Settings Section
         layout.label(text="Settings:")
         layout.prop(scene, "smart_renamer_naming_style")
+        layout.prop(scene, "smart_renamer_context", text="Context")
         
         layout.label(text="Target:")
         row = layout.row()
