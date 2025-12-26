@@ -12,29 +12,37 @@ class SMART_RENAMER_PT_main_panel(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
         
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        
         # Access Addon Preferences
         addon_prefs = context.preferences.addons.get(__package__).preferences
         
         if not addon_prefs.api_key:
-            layout.label(text="API Key missing!", icon='ERROR')
-            layout.operator("preferences.addon_show", text="Open Preferences").module = __package__
+            box = layout.box()
+            box.label(text="Setup Required", icon='ERROR')
+            row = box.row()
+            row.operator("preferences.addon_show", text="Open Preferences", icon='PREFERENCES').module = __package__
             layout.separator()
         
-        # Settings Section
-        layout.label(text="Settings:")
-        layout.prop(scene, "smart_renamer_naming_style")
-        layout.prop(scene, "smart_renamer_context", text="Context")
+        # Configuration Box
+        box = layout.box()
+        box.label(text="Configuration", icon='PREFERENCES')
         
-        layout.label(text="Capture Settings:")
-        layout.prop(scene, "smart_renamer_view_mode", text="Views")
-        layout.prop(scene, "smart_renamer_include_context")
+        col = box.column(align=True)
+        col.prop(scene, "smart_renamer_naming_style", text="Style")
+        col.prop(scene, "smart_renamer_view_mode", text="Views")
+        box.prop(scene, "smart_renamer_include_context", text="Include Context View", toggle=True)
         
+        box.separator()
+        box.prop(scene, "smart_renamer_context", text="Context", icon='INFO')
+
         layout.separator()
 
         # Action Section
-        row = layout.row()
-        row.scale_y = 1.5
-        row.operator("smart_renamer.analyze_rename", icon='SHADING_RENDERED')
+        col = layout.column()
+        col.scale_y = 1.6
+        col.operator("smart_renamer.analyze_rename", icon='GREASEPENCIL')
         
         if not addon_prefs.api_key:
-            row.enabled = False
+            col.enabled = False

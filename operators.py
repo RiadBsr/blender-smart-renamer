@@ -60,7 +60,12 @@ def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name,
             prompt_text += f"4. Project Context: {context_text}\n"
             
         if recent_names:
-            prompt_text += f"5. Consistency: Recently named objects in this batch: {', '.join(recent_names[-10:])}. If this object is identical/similar, use consistent terminology.\n"
+            prompt_text += (
+                f"5. Batch Context: Recently named objects: {', '.join(recent_names[-10:])}. "
+                f"Use this ONLY to maintain naming consistency for identical objects. "
+                f"CRITICAL: Do not copy previous names if the object is different. "
+                f"Be specific (e.g., name a 'piston' as 'piston', not 'engine_block').\n"
+            )
         
         parts = [{"text": prompt_text}]
         for img_b64 in images_b64:
