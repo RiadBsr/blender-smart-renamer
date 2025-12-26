@@ -20,7 +20,7 @@ class SmartRenamerPreferences(bpy.types.AddonPreferences):
         description="Google Gemini API Key",
         default="",
         subtype='PASSWORD'
-    )
+    ) # type: ignore
 
     def draw(self, context):
         layout = self.layout
