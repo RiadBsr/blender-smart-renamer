@@ -25,10 +25,10 @@ class SMART_RENAMER_PT_main_panel(bpy.types.Panel):
         layout.prop(scene, "smart_renamer_naming_style")
         layout.prop(scene, "smart_renamer_context", text="Context")
         
-        layout.label(text="Target:")
-        row = layout.row()
-        row.prop(scene, "smart_renamer_scope", expand=True)
-
+        layout.label(text="Capture Settings:")
+        layout.prop(scene, "smart_renamer_view_mode", text="Views")
+        layout.prop(scene, "smart_renamer_include_context")
+        
         layout.separator()
 
         # Action Section

@@ -9,10 +9,11 @@ def get_temp_image_path(suffix=""):
     temp_dir = tempfile.gettempdir()
     return os.path.join(temp_dir, f"smart_renamer_temp{suffix}.png")
 
-def take_isolated_screenshot(obj, context):
+def take_isolated_screenshot(obj, context, view_angle='FRONT'):
     """
-    Isolates the object, creates a temp camera, renders a 512x512 thumbnail, 
+    Isolates the object, creates a temp camera, renders a 384x384 thumbnail, 
     and returns the file path. Does not affect user viewport.
+    view_angle: 'FRONT' or 'BACK'
     """
     scene = context.scene
     view_layer = context.view_layer
@@ -35,9 +36,9 @@ def take_isolated_screenshot(obj, context):
     temp_cam_obj = None
     
     try:
-        # 2. Set Resolution (512x512) for speed and consistency
-        scene.render.resolution_x = 512
-        scene.render.resolution_y = 512
+        # 2. Set Resolution (384x384) for speed and consistency
+        scene.render.resolution_x = 384
+        scene.render.resolution_y = 384
         scene.render.resolution_percentage = 100
         
         # 3. Isolate Object
@@ -69,8 +70,13 @@ def take_isolated_screenshot(obj, context):
         radius = max((corner - center).length for corner in bbox_corners)
         if radius == 0: radius = 1.0 # Fallback for empty/point objects
         
-        # Position camera: Front-Right-Top angle
-        direction = mathutils.Vector((1.0, -1.2, 0.8)).normalized()
+        # Position camera
+        if view_angle == 'BACK':
+            # Opposite to Front-Right-Top: Back-Left-Top
+            direction = mathutils.Vector((-1.0, 1.2, 0.8)).normalized()
+        else:
+            # Front-Right-Top
+            direction = mathutils.Vector((1.0, -1.2, 0.8)).normalized()
         
         # Distance to fit object in FOV
         # Default camera angle is ~39.6 degrees (horizontal)
@@ -95,7 +101,8 @@ def take_isolated_screenshot(obj, context):
         temp_cam_obj.rotation_euler = rot_quat.to_euler()
         
         # 5. Render
-        filepath = get_temp_image_path("_iso")
+        suffix = "_iso_back" if view_angle == 'BACK' else "_iso_front"
+        filepath = get_temp_image_path(suffix)
         scene.render.filepath = filepath
         scene.render.image_settings.file_format = 'PNG'
         
@@ -196,9 +203,9 @@ def take_context_screenshot(obj, context):
     temp_cam_obj = None
     
     try:
-        # 2. Set Resolution (512x512)
-        scene.render.resolution_x = 512
-        scene.render.resolution_y = 512
+        # 2. Set Resolution (384x384)
+        scene.render.resolution_x = 384
+        scene.render.resolution_y = 384
         scene.render.resolution_percentage = 100
         
         # 3. Select Object (Ensure it is highlighted)
@@ -222,8 +229,8 @@ def take_context_screenshot(obj, context):
         direction = mathutils.Vector((1.0, -1.2, 0.8)).normalized()
         fov = cam_data.angle
         
-        # Use larger distance factor for context (e.g., 2.5x)
-        distance = (radius * 2.5) / math.sin(fov / 2) 
+        # Use larger distance factor for context (e.g., 1.8x)
+        distance = (radius * 1.8) / math.sin(fov / 2) 
         
         camera_pos = center + direction * distance
         temp_cam_obj.location = camera_pos
@@ -242,7 +249,7 @@ def take_context_screenshot(obj, context):
         space.shading.type = 'SOLID'
         space.shading.show_xray = True
         space.overlay.show_overlays = True
-        obj.show_wire = True
+        # obj.show_wire = True # Disabled per user request
         
         # 6. Render
         filepath = get_temp_image_path("_ctx")

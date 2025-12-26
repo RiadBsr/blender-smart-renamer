@@ -50,20 +50,26 @@ def register():
         default='Snake_Case'
     )
     
-    bpy.types.Scene.smart_renamer_scope = bpy.props.EnumProperty(
-        name="Scope",
-        description="Rename Active Object or All Selected",
-        items=[
-            ('ACTIVE', "Rename Active", "Only rename the active object"),
-            ('SELECTED', "Rename Selected", "Rename all selected objects"),
-        ],
-        default='ACTIVE'
-    )
-    
     bpy.types.Scene.smart_renamer_context = bpy.props.StringProperty(
         name="Context",
         description="Additional context for the AI (e.g., 'Sci-fi game assets', 'Low poly style')",
         default=""
+    )
+    
+    bpy.types.Scene.smart_renamer_view_mode = bpy.props.EnumProperty(
+        name="Isolated Views",
+        description="Choose which isolated views to capture",
+        items=[
+            ('FRONT', "Front Only", "Faster, less detail"),
+            ('FRONT_BACK', "Front & Back", "Slower, better accuracy"),
+        ],
+        default='FRONT_BACK'
+    )
+    
+    bpy.types.Scene.smart_renamer_include_context = bpy.props.BoolProperty(
+        name="Include Context",
+        description="Include a screenshot of the object in the scene context (Slower, but helps with scale/location)",
+        default=True
     )
 
 def unregister():
@@ -71,10 +77,12 @@ def unregister():
         del bpy.types.Scene.smart_renamer_api_key
     if hasattr(bpy.types.Scene, "smart_renamer_naming_style"):
         del bpy.types.Scene.smart_renamer_naming_style
-    if hasattr(bpy.types.Scene, "smart_renamer_scope"):
-        del bpy.types.Scene.smart_renamer_scope
     if hasattr(bpy.types.Scene, "smart_renamer_context"):
         del bpy.types.Scene.smart_renamer_context
+    if hasattr(bpy.types.Scene, "smart_renamer_view_mode"):
+        del bpy.types.Scene.smart_renamer_view_mode
+    if hasattr(bpy.types.Scene, "smart_renamer_include_context"):
+        del bpy.types.Scene.smart_renamer_include_context
     
     bpy.utils.unregister_class(SMART_RENAMER_PT_main_panel)
     bpy.utils.unregister_class(SMART_RENAMER_OT_analyze_rename)

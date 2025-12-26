@@ -23,7 +23,14 @@ GEMMA_MODELS = [
     "gemma-3-1b-it"
 ]
 
-def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name, context_text=""):
+NAMING_STYLE_DESCRIPTIONS = {
+    'Snake_Case': "lowercase words separated by underscores (e.g., `sci_fi_crate`).",
+    'CamelCase': "Capitalized words concatenated without spaces (e.g., `SciFiCrate`).",
+    'Unreal_Prefix': "Asset type prefix followed by PascalCase (e.g., `SM_Crate` for static meshes).",
+    'Descriptive': "A short, natural language description (e.g., `Old Wooden Crate`)."
+}
+
+def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name, context_text="", collection_name="", dimensions="", recent_names=None):
     """
     Sends request to specific model. Returns dict with result or error code.
     """
@@ -32,16 +39,28 @@ def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name,
         
         headers = {'Content-Type': 'application/json'}
         
-        # Updated prompt to be more robust for JSON parsing
+        style_desc = NAMING_STYLE_DESCRIPTIONS.get(naming_style, naming_style)
+        
+        # Updated prompt with richer context and expert persona
         prompt_text = (
-            f"Analyze these 3D object images. The first image is an isolated view, the second shows the object in context (highlighted). "
-            f"Return ONLY a JSON object {{\"name\": \"new_name\"}} based on its visual appearance. "
-            f"Adhere to naming convention: {naming_style}. "
-            f"Ensure the property name is enclosed in double quotes."
+            f"You are an expert 3D Technical Artist specializing in asset management. "
+            f"Your task is to analyze these viewport renders and generate a precise, descriptive name for the 3D object.\n"
+            f"The images provided may include: Isolated Front View, Isolated Back View, and a Context View (highlighted in scene).\n\n"
+            f"Object Metadata:\n"
+            f"- Current Name: \"{obj_name}\" (might be generic/incorrect)\n"
+            f"- Collection: \"{collection_name}\"\n"
+            f"- Dimensions: {dimensions}\n\n"
+            f"Naming Rules:\n"
+            f"1. Style: {naming_style} ({style_desc})\n"
+            f"2. Be descriptive but concise. Avoid generic names like 'Cube' or 'Mesh'.\n"
+            f"3. Return ONLY a JSON object: {{\"name\": \"new_name\"}}.\n"
         )
         
         if context_text:
-            prompt_text += f" Additional Context: {context_text}"
+            prompt_text += f"4. Project Context: {context_text}\n"
+            
+        if recent_names:
+            prompt_text += f"5. Consistency: Recently named objects in this batch: {', '.join(recent_names[-10:])}. If this object is identical/similar, use consistent terminology.\n"
         
         parts = [{"text": prompt_text}]
         for img_b64 in images_b64:
@@ -98,6 +117,8 @@ def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name,
         if e.code == 429:
             return {'obj_name': obj_name, 'status_code': 429} # Special signal for rate limit
         return {'obj_name': obj_name, 'error': f"API Error {e.code}: {e.reason}"}
+    except ValueError as e:
+        return {'obj_name': obj_name, 'error': f"Invalid API Key or URL: {str(e)}"}
     except Exception as e:
         return {'obj_name': obj_name, 'error': str(e)}
 
@@ -106,12 +127,15 @@ def batch_worker(api_key, naming_style):
     
     # Start with the best model
     current_model_index = 0
+    recent_names = []
     
     while not task_queue.empty():
         item = task_queue.get()
         obj_name = item['obj_name']
         images_b64 = item['images_b64']
         context_text = item.get('context', "")
+        collection_name = item.get('collection_name', "")
+        dimensions = item.get('dimensions', "")
         
         # Try to process
         success = False
@@ -121,7 +145,10 @@ def batch_worker(api_key, naming_style):
             current_model = GEMMA_MODELS[current_model_index]
             print(f"Smart Renamer: Processing '{obj_name}' using {current_model}...")
             
-            result = send_gemini_request(api_key, images_b64, naming_style, obj_name, current_model, context_text)
+            result = send_gemini_request(
+                api_key, images_b64, naming_style, obj_name, current_model, 
+                context_text, collection_name, dimensions, recent_names
+            )
             
             if result.get('status_code') == 429:
                 print(f"Smart Renamer: Rate limit hit on {current_model}. Downgrading...")
@@ -141,6 +168,8 @@ def batch_worker(api_key, naming_style):
                 # Success or other error
                 success = True
                 result_queue.put(result)
+                if 'new_name' in result:
+                    recent_names.append(result['new_name'])
         
         task_queue.task_done()
         # No sleep here! We go as fast as possible.
@@ -188,8 +217,9 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         api_key = addon_prefs.api_key
         
         naming_style = scene.smart_renamer_naming_style
-        scope = scene.smart_renamer_scope
         context_text = getattr(scene, "smart_renamer_context", "")
+        view_mode = getattr(scene, "smart_renamer_view_mode", 'FRONT_BACK')
+        include_context = getattr(scene, "smart_renamer_include_context", True)
         
         if not api_key:
             self.report({'ERROR'}, "Please configure API Key in Addon Preferences")
@@ -197,13 +227,14 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
             bpy.ops.preferences.addon_show(module=__package__)
             return {'CANCELLED'}
             
+        # Validate API Key
+        if any(c.isspace() for c in api_key.strip()):
+            self.report({'ERROR'}, "Invalid API Key: Contains spaces. Please check your key.")
+            bpy.ops.preferences.addon_show(module=__package__)
+            return {'CANCELLED'}
+            
         # Determine objects to process
-        objects_to_process = []
-        if scope == 'ACTIVE':
-            if context.active_object and context.active_object.type == 'MESH':
-                objects_to_process.append(context.active_object)
-        elif scope == 'SELECTED':
-            objects_to_process = [o for o in context.selected_objects if o.type == 'MESH']
+        objects_to_process = [o for o in context.selected_objects if o.type == 'MESH']
             
         if not objects_to_process:
             self.report({'WARNING'}, "No mesh objects selected")
@@ -216,21 +247,41 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         # 1. Capture all images first (Main Thread)
         tasks_added = 0
         for obj in objects_to_process:
-            image_iso_path = utils.take_isolated_screenshot(obj, context)
-            image_ctx_path = utils.take_context_screenshot(obj, context)
+            images_b64 = []
             
-            if not image_iso_path or not image_ctx_path:
+            # Front View (Always captured)
+            image_iso_front_path = utils.take_isolated_screenshot(obj, context, view_angle='FRONT')
+            if image_iso_front_path:
+                images_b64.append(utils.image_to_base64(image_iso_front_path))
+            
+            # Back View (Optional)
+            if view_mode == 'FRONT_BACK':
+                image_iso_back_path = utils.take_isolated_screenshot(obj, context, view_angle='BACK')
+                if image_iso_back_path:
+                    images_b64.append(utils.image_to_base64(image_iso_back_path))
+            
+            # Context View (Optional)
+            if include_context:
+                image_ctx_path = utils.take_context_screenshot(obj, context)
+                if image_ctx_path:
+                    images_b64.append(utils.image_to_base64(image_ctx_path))
+            
+            if not images_b64:
                 print(f"Skipping {obj.name}: Image capture failed.")
                 continue
-                
-            image_iso_b64 = utils.image_to_base64(image_iso_path)
-            image_ctx_b64 = utils.image_to_base64(image_ctx_path)
+            
+            # Gather Object Metadata
+            collection_name = obj.users_collection[0].name if obj.users_collection else "Scene Collection"
+            dims = obj.dimensions
+            dimensions_str = f"{dims.x:.2f}m x {dims.y:.2f}m x {dims.z:.2f}m"
             
             # Add to task queue
             task_queue.put({
                 'obj_name': obj.name,
-                'images_b64': [image_iso_b64, image_ctx_b64],
-                'context': context_text
+                'images_b64': images_b64,
+                'context': context_text,
+                'collection_name': collection_name,
+                'dimensions': dimensions_str
             })
             tasks_added += 1
             
