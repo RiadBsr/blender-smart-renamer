@@ -1,5 +1,5 @@
 import bpy
-from .operators import SMART_RENAMER_OT_analyze_rename
+from .operators import SMART_RENAMER_OT_analyze_rename, SMART_RENAMER_OT_cancel_process
 from .panels import SMART_RENAMER_PT_main_panel
 
 bl_info = {
@@ -31,6 +31,7 @@ def register():
     try:
         bpy.utils.register_class(SmartRenamerPreferences)
         bpy.utils.register_class(SMART_RENAMER_OT_analyze_rename)
+        bpy.utils.register_class(SMART_RENAMER_OT_cancel_process)
         bpy.utils.register_class(SMART_RENAMER_PT_main_panel)
     except ValueError:
         pass # Already registered
@@ -72,7 +73,19 @@ def register():
     bpy.types.Scene.smart_renamer_include_context = bpy.props.BoolProperty(
         name="Include Context",
         description="Include a screenshot of the object in the scene context (Slower, but helps with scale/location)",
-        default=True
+        default=False
+    )
+
+    bpy.types.Scene.smart_renamer_status = bpy.props.StringProperty(
+        name="Status",
+        description="Current status of the renaming process",
+        default="Ready"
+    )
+
+    bpy.types.Scene.smart_renamer_is_processing = bpy.props.BoolProperty(
+        name="Is Processing",
+        description="Whether the addon is currently processing",
+        default=False
     )
 
 def unregister():
@@ -86,9 +99,14 @@ def unregister():
         del bpy.types.Scene.smart_renamer_view_mode
     if hasattr(bpy.types.Scene, "smart_renamer_include_context"):
         del bpy.types.Scene.smart_renamer_include_context
+    if hasattr(bpy.types.Scene, "smart_renamer_status"):
+        del bpy.types.Scene.smart_renamer_status
+    if hasattr(bpy.types.Scene, "smart_renamer_is_processing"):
+        del bpy.types.Scene.smart_renamer_is_processing
     
     bpy.utils.unregister_class(SMART_RENAMER_PT_main_panel)
     bpy.utils.unregister_class(SMART_RENAMER_OT_analyze_rename)
+    bpy.utils.unregister_class(SMART_RENAMER_OT_cancel_process)
     bpy.utils.unregister_class(SmartRenamerPreferences)
 
 

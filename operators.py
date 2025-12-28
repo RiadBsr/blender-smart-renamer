@@ -13,6 +13,10 @@ result_queue = queue.Queue()
 # task_queue: holds pending API requests to be processed sequentially
 task_queue = queue.Queue()
 
+# Global Progress Tracking
+pending_tasks_count = 0
+total_tasks_count = 0
+
 # Gemma 3 Family - High Throughput Chain
 # Each has ~30 RPM. Chaining them gives theoretical ~150 RPM.
 GEMMA_MODELS = [
@@ -69,6 +73,16 @@ def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name,
                 f"CRITICAL: Do not copy previous names if the object is different. "
                 f"Be specific (e.g., name a 'piston' as 'piston', not 'engine_block').\n"
             )
+        
+        # Estimate Token Usage for logging
+        # Gemini Vision typically counts images as 258 tokens each
+        # Text is approx 1 token per 4 chars
+        num_images = len([img for img in images_b64 if img])
+        est_image_tokens = num_images * 258
+        est_text_tokens = len(prompt_text) // 4
+        total_est_tokens = est_image_tokens + est_text_tokens
+        
+        print(f"Smart Renamer: Sending request (~{total_est_tokens} tokens) to {model_name}...")
         
         parts = [{"text": prompt_text}]
         for img_b64 in images_b64:
@@ -188,7 +202,10 @@ def process_queue_timer():
     """
     Timer function to check the result queue and update Blender objects.
     """
+    global pending_tasks_count, total_tasks_count
+    
     try:
+        # Process all available results
         while not result_queue.empty():
             item = result_queue.get_nowait()
             
@@ -206,10 +223,27 @@ def process_queue_timer():
                     obj.name = new_name
                     print(f"Smart Renamer: Renamed '{old_name}' to '{new_name}'")
             
+            pending_tasks_count -= 1
+            
+        # Update Status
+        if pending_tasks_count > 0:
+            completed = total_tasks_count - pending_tasks_count
+            bpy.context.scene.smart_renamer_status = f"Processing... ({completed}/{total_tasks_count})"
+            bpy.context.scene.smart_renamer_is_processing = True
+        elif total_tasks_count > 0 and pending_tasks_count <= 0:
+            # All done
+            bpy.context.scene.smart_renamer_status = f"Done! ({total_tasks_count} processed)"
+            bpy.context.scene.smart_renamer_is_processing = False
+            # Reset counters after a brief delay or immediately? 
+            # Let's leave the "Done" message visible.
+            # We can reset total_tasks_count to 0 to stop this block from running repeatedly,
+            # but we want to keep the "Done" message.
+            # So we just set is_processing to False.
+            
     except queue.Empty:
         pass
         
-    return 1.0  # Run again in 1 second
+    return 0.5  # Run again in 0.5 seconds (faster updates)
 
 class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
     """Analyze and Rename Object using AI"""
@@ -218,6 +252,7 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
+        global pending_tasks_count, total_tasks_count
         scene = context.scene
         
         # Get API Key from Addon Preferences
@@ -248,72 +283,73 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
             self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
             
+        # Initialize Progress
+        total_tasks_count = len(objects_to_process)
+        pending_tasks_count = total_tasks_count
+        scene.smart_renamer_is_processing = True
+        scene.smart_renamer_status = "Capturing images..."
+        
         # Register timer if not already running
         if not bpy.app.timers.is_registered(process_queue_timer):
             bpy.app.timers.register(process_queue_timer)
             
         # 1. Capture all images first (Main Thread)
         tasks_added = 0
-        for obj in objects_to_process:
-            images_b64 = []
+        
+        # Use CaptureSession to optimize state saving/restoring
+        with utils.CaptureSession(context) as session:
+            for obj in objects_to_process:
+                images_b64 = []
+                
+                # Front View (Always captured)
+                image_iso_front_path = utils.take_isolated_screenshot(obj, context, view_angle='FRONT', session=session)
+                if image_iso_front_path:
+                    images_b64.append(utils.image_to_base64(image_iso_front_path))
+                
+                # Back View (Optional)
+                if view_mode == 'FRONT_BACK':
+                    image_iso_back_path = utils.take_isolated_screenshot(obj, context, view_angle='BACK', session=session)
+                    if image_iso_back_path:
+                        images_b64.append(utils.image_to_base64(image_iso_back_path))
+                
+                # Context View (Optional)
+                if include_context:
+                    image_ctx_path = utils.take_context_screenshot(obj, context, session=session)
+                    if image_ctx_path:
+                        images_b64.append(utils.image_to_base64(image_ctx_path))
+                
+                if not images_b64:
+                    print(f"Skipping {obj.name}: Image capture failed.")
+                    continue
+                
+                # Gather Object Metadata
+                collection_name = obj.users_collection[0].name if obj.users_collection else "Scene Collection"
+                dims = obj.dimensions
+                dimensions_str = f"{dims.x:.2f}m x {dims.y:.2f}m x {dims.z:.2f}m"
+                
+                # Add to task queue
+                task_queue.put({
+                    'obj_name': obj.name,
+                    'images_b64': images_b64,
+                    'context': context_text,
+                    'collection_name': collection_name,
+                    'dimensions': dimensions_str
+                })
+                tasks_added += 1
             
-            # Front View (Always captured)
-            image_iso_front_path = utils.take_isolated_screenshot(obj, context, view_angle='FRONT')
-            if image_iso_front_path:
-                images_b64.append(utils.image_to_base64(image_iso_front_path))
-            
-            # Back View (Optional)
-            if view_mode == 'FRONT_BACK':
-                image_iso_back_path = utils.take_isolated_screenshot(obj, context, view_angle='BACK')
-                if image_iso_back_path:
-                    images_b64.append(utils.image_to_base64(image_iso_back_path))
-            
-            # Context View (Optional)
-            if include_context:
-                image_ctx_path = utils.take_context_screenshot(obj, context)
-                if image_ctx_path:
-                    images_b64.append(utils.image_to_base64(image_ctx_path))
-            
-            if not images_b64:
-                print(f"Skipping {obj.name}: Image capture failed.")
-                continue
-            
-            # Gather Object Metadata
-            collection_name = obj.users_collection[0].name if obj.users_collection else "Scene Collection"
-            dims = obj.dimensions
-            dimensions_str = f"{dims.x:.2f}m x {dims.y:.2f}m x {dims.z:.2f}m"
-            
-            # Add to task queue
-            task_queue.put({
-                'obj_name': obj.name,
-                'images_b64': images_b64,
-                'context': context_text,
-                'collection_name': collection_name,
-                'dimensions': dimensions_str
-            })
-            tasks_added += 1
-            
+        # Update pending count to match actual tasks added
+        pending_tasks_count = tasks_added
+        total_tasks_count = tasks_added
+        
         if tasks_added == 0:
             self.report({'ERROR'}, "No images could be captured.")
+            scene.smart_renamer_is_processing = False
+            scene.smart_renamer_status = "Failed"
             return {'CANCELLED'}
+            
+        scene.smart_renamer_status = f"Processing... (0/{total_tasks_count})"
 
         # 2. Start ONE worker thread to process the queue
-        # Only start if not already running (simple check: if queue was empty before, we might need to start it)
-        # But since we just filled it, we can just start a thread. 
-        # Note: If a thread is already running from a previous click, it will just pick up these new tasks 
-        # because it loops `while not task_queue.empty()`.
-        # However, if the previous thread finished, we need a new one.
-        # A simple way is to check if the queue size is exactly what we added (meaning it was empty).
-        # Or just start a thread and let it check. 
-        # To avoid multiple threads racing, we can check active threads, but `task_queue` is thread-safe.
-        # If multiple threads run, we hit rate limits. 
-        # Ideally we want a singleton worker.
-        
-        # Simple Singleton Pattern for Worker:
-        # Check if we have a living worker thread? 
-        # For simplicity in this script, we'll just start a thread. 
-        # If the user clicks twice rapidly, we might get 2 threads and hit 429.
-        # But assuming reasonable usage:
         
         thread = threading.Thread(
             target=batch_worker,
@@ -323,4 +359,32 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         thread.start()
             
         self.report({'INFO'}, f"Queued {tasks_added} objects for analysis...")
+        return {'FINISHED'}
+
+class SMART_RENAMER_OT_cancel_process(bpy.types.Operator):
+    """Cancel the current renaming process"""
+    bl_idname = "smart_renamer.cancel_process"
+    bl_label = "Cancel"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        global pending_tasks_count, total_tasks_count
+        
+        # Clear the task queue
+        while not task_queue.empty():
+            try:
+                task_queue.get_nowait()
+                task_queue.task_done()
+            except queue.Empty:
+                break
+        
+        # Reset counters
+        pending_tasks_count = 0
+        total_tasks_count = 0
+        
+        # Update UI
+        context.scene.smart_renamer_is_processing = False
+        context.scene.smart_renamer_status = "Cancelled"
+        
+        self.report({'INFO'}, "Smart Renamer process cancelled.")
         return {'FINISHED'}

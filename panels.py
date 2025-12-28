@@ -42,7 +42,13 @@ class SMART_RENAMER_PT_main_panel(bpy.types.Panel):
         # Action Section
         col = layout.column()
         col.scale_y = 1.6
-        col.operator("smart_renamer.analyze_rename", icon='GREASEPENCIL')
+        
+        if scene.smart_renamer_is_processing:
+            row = col.row(align=True)
+            row.label(text=scene.smart_renamer_status, icon='TIME')
+            row.operator("smart_renamer.cancel_process", text="", icon='X')
+        else:
+            col.operator("smart_renamer.analyze_rename", icon='GREASEPENCIL')
         
         if not addon_prefs.api_key:
             col.enabled = False

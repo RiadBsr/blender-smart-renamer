@@ -5,42 +5,104 @@ import base64
 import math
 import mathutils
 
+class CaptureSession:
+    def __init__(self, context):
+        self.context = context
+        self.scene = context.scene
+        self.view_layer = context.view_layer
+        self.original_state = {}
+        
+    def __enter__(self):
+        # Store global state
+        self.original_state['resolution_x'] = self.scene.render.resolution_x
+        self.original_state['resolution_y'] = self.scene.render.resolution_y
+        self.original_state['resolution_percentage'] = self.scene.render.resolution_percentage
+        self.original_state['camera'] = self.scene.camera
+        self.original_state['filepath'] = self.scene.render.filepath
+        self.original_state['selection'] = self.context.selected_objects
+        self.original_state['active'] = self.context.active_object
+        
+        # Store visibility of ALL objects (Expensive, do once)
+        self.original_state['visibility'] = {o: o.hide_get() for o in self.view_layer.objects}
+        
+        # Set capture settings
+        self.scene.render.resolution_x = 384
+        self.scene.render.resolution_y = 384
+        self.scene.render.resolution_percentage = 100
+        
+        return self
+        
+    def restore_visibility(self):
+        for o, hidden in self.original_state['visibility'].items():
+            try:
+                o.hide_set(hidden)
+            except ReferenceError:
+                pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Restore global state
+        self.scene.render.resolution_x = self.original_state['resolution_x']
+        self.scene.render.resolution_y = self.original_state['resolution_y']
+        self.scene.render.resolution_percentage = self.original_state['resolution_percentage']
+        self.scene.render.filepath = self.original_state['filepath']
+        self.scene.camera = self.original_state['camera']
+        
+        # Restore visibility
+        self.restore_visibility()
+            
+        # Restore selection
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in self.original_state['selection']:
+            try:
+                o.select_set(True)
+            except ReferenceError:
+                pass
+        
+        if self.original_state['active']:
+            try:
+                self.context.view_layer.objects.active = self.original_state['active']
+            except ReferenceError:
+                pass
+
 def get_temp_image_path(suffix=""):
     temp_dir = tempfile.gettempdir()
     return os.path.join(temp_dir, f"smart_renamer_temp{suffix}.png")
 
-def take_isolated_screenshot(obj, context, view_angle='FRONT'):
+def take_isolated_screenshot(obj, context, view_angle='FRONT', session=None):
     """
-    Isolates the object, creates a temp camera, renders a 384x384 thumbnail, 
+    Isolates the object, creates a temp camera, renders a 256x256 thumbnail, 
     and returns the file path. Does not affect user viewport.
     view_angle: 'FRONT' or 'BACK'
+    session: Optional CaptureSession object to skip state save/restore
     """
     scene = context.scene
     view_layer = context.view_layer
     
-    # 1. Store current state
-    original_res_x = scene.render.resolution_x
-    original_res_y = scene.render.resolution_y
-    original_res_pct = scene.render.resolution_percentage
-    original_camera = scene.camera
-    original_filepath = scene.render.filepath
-    
-    original_selection = context.selected_objects
-    original_active = context.active_object
-    
-    # Store visibility state of all objects in the view layer
-    visibility_map = {}
-    for o in view_layer.objects:
-        visibility_map[o] = o.hide_get()
+    if not session:
+        # 1. Store current state
+        original_res_x = scene.render.resolution_x
+        original_res_y = scene.render.resolution_y
+        original_res_pct = scene.render.resolution_percentage
+        original_camera = scene.camera
+        original_filepath = scene.render.filepath
+        
+        original_selection = context.selected_objects
+        original_active = context.active_object
+        
+        # Store visibility state of all objects in the view layer
+        visibility_map = {}
+        for o in view_layer.objects:
+            visibility_map[o] = o.hide_get()
+            
+        # 2. Set Resolution (256x256)
+        scene.render.resolution_x = 256
+        scene.render.resolution_y = 256
+        scene.render.resolution_percentage = 100
     
     temp_cam_obj = None
+    cam_data = None
     
     try:
-        # 2. Set Resolution (384x384) for speed and consistency
-        scene.render.resolution_x = 384
-        scene.render.resolution_y = 384
-        scene.render.resolution_percentage = 100
-        
         # 3. Isolate Object
         bpy.ops.object.select_all(action='DESELECT')
         
@@ -113,13 +175,6 @@ def take_isolated_screenshot(obj, context, view_angle='FRONT'):
         return filepath
 
     finally:
-        # 6. Restore State
-        scene.render.resolution_x = original_res_x
-        scene.render.resolution_y = original_res_y
-        scene.render.resolution_percentage = original_res_pct
-        scene.render.filepath = original_filepath
-        scene.camera = original_camera
-        
         # Cleanup temp camera
         if temp_cam_obj:
             bpy.data.objects.remove(temp_cam_obj, do_unlink=True)
@@ -127,44 +182,62 @@ def take_isolated_screenshot(obj, context, view_angle='FRONT'):
             if cam_data:
                 bpy.data.cameras.remove(cam_data, do_unlink=True)
         
-        # Restore visibility
-        for o, hidden in visibility_map.items():
-            try:
-                o.hide_set(hidden)
-            except ReferenceError:
-                pass 
-        
-        # Restore selection
-        bpy.ops.object.select_all(action='DESELECT')
-        for o in original_selection:
-            try:
-                o.select_set(True)
-            except ReferenceError:
-                pass
-                
-        if original_active:
-            try:
-                view_layer.objects.active = original_active
-            except ReferenceError:
-                pass
+        if not session:
+            # 6. Restore State
+            scene.render.resolution_x = original_res_x
+            scene.render.resolution_y = original_res_y
+            scene.render.resolution_percentage = original_res_pct
+            scene.render.filepath = original_filepath
+            scene.camera = original_camera
+            
+            # Restore visibility
+            for o, hidden in visibility_map.items():
+                try:
+                    o.hide_set(hidden)
+                except ReferenceError:
+                    pass 
+            
+            # Restore selection
+            bpy.ops.object.select_all(action='DESELECT')
+            for o in original_selection:
+                try:
+                    o.select_set(True)
+                except ReferenceError:
+                    pass
+                    
+            if original_active:
+                try:
+                    view_layer.objects.active = original_active
+                except ReferenceError:
+                    pass
 
-def take_context_screenshot(obj, context):
+def take_context_screenshot(obj, context, session=None):
     """
     Takes a screenshot of the object within the scene (no isolation),
     highlighted (selected), using Viewport Shading (X-Ray/Wireframe).
+    session: Optional CaptureSession object to skip scene state save/restore
     """
     scene = context.scene
     view_layer = context.view_layer
     
-    # 1. Store current state
-    original_res_x = scene.render.resolution_x
-    original_res_y = scene.render.resolution_y
-    original_res_pct = scene.render.resolution_percentage
-    original_camera = scene.camera
-    original_filepath = scene.render.filepath
-    
-    original_selection = context.selected_objects
-    original_active = context.active_object
+    if not session:
+        # 1. Store current state
+        original_res_x = scene.render.resolution_x
+        original_res_y = scene.render.resolution_y
+        original_res_pct = scene.render.resolution_percentage
+        original_camera = scene.camera
+        original_filepath = scene.render.filepath
+        
+        original_selection = context.selected_objects
+        original_active = context.active_object
+        
+        # 2. Set Resolution (256x256)
+        scene.render.resolution_x = 256
+        scene.render.resolution_y = 256
+        scene.render.resolution_percentage = 100
+    else:
+        # Ensure visibility is restored for context view (in case isolated view hid things)
+        session.restore_visibility()
     
     # Store object display state
     original_show_in_front = obj.show_in_front
@@ -201,13 +274,9 @@ def take_context_screenshot(obj, context):
     original_view_camera_offset = tuple(space.region_3d.view_camera_offset)
     
     temp_cam_obj = None
+    cam_data = None
     
     try:
-        # 2. Set Resolution (384x384)
-        scene.render.resolution_x = 384
-        scene.render.resolution_y = 384
-        scene.render.resolution_percentage = 100
-        
         # 3. Select Object (Ensure it is highlighted)
         bpy.ops.object.select_all(action='DESELECT')
         obj.hide_set(False)
@@ -249,7 +318,10 @@ def take_context_screenshot(obj, context):
         space.shading.type = 'SOLID'
         space.shading.show_xray = True
         space.overlay.show_overlays = True
-        # obj.show_wire = True # Disabled per user request
+        
+        # Set object display to wireframe on top
+        obj.show_in_front = True
+        obj.show_wire = True
         
         # 6. Render
         filepath = get_temp_image_path("_ctx")
@@ -273,12 +345,18 @@ def take_context_screenshot(obj, context):
         return filepath
 
     finally:
-        # 7. Restore State
-        scene.render.resolution_x = original_res_x
-        scene.render.resolution_y = original_res_y
-        scene.render.resolution_percentage = original_res_pct
-        scene.render.filepath = original_filepath
-        scene.camera = original_camera
+        # Cleanup temp camera
+        if temp_cam_obj:
+            bpy.data.objects.remove(temp_cam_obj, do_unlink=True)
+            if cam_data:
+                bpy.data.cameras.remove(cam_data, do_unlink=True)
+        
+        # Restore Object Display
+        try:
+            obj.show_in_front = original_show_in_front
+            obj.show_wire = original_show_wire
+        except ReferenceError:
+            pass
         
         # Restore Viewport State
         if space:
@@ -295,30 +373,26 @@ def take_context_screenshot(obj, context):
             space.region_3d.view_camera_zoom = original_view_camera_zoom
             space.region_3d.view_camera_offset = original_view_camera_offset
         
-        # Restore object display state
-        try:
-            obj.show_in_front = original_show_in_front
-            obj.show_wire = original_show_wire
-        except ReferenceError:
-            pass
-        
-        if temp_cam_obj:
-            bpy.data.objects.remove(temp_cam_obj, do_unlink=True)
-            if cam_data:
-                bpy.data.cameras.remove(cam_data, do_unlink=True)
-        
-        # Restore selection
-        bpy.ops.object.select_all(action='DESELECT')
-        for o in original_selection:
-            try:
-                o.select_set(True)
-            except ReferenceError:
-                pass
-        if original_active:
-            try:
-                view_layer.objects.active = original_active
-            except ReferenceError:
-                pass
+        if not session:
+            # Restore Scene State
+            scene.render.resolution_x = original_res_x
+            scene.render.resolution_y = original_res_y
+            scene.render.resolution_percentage = original_res_pct
+            scene.render.filepath = original_filepath
+            scene.camera = original_camera
+            
+            # Restore selection
+            bpy.ops.object.select_all(action='DESELECT')
+            for o in original_selection:
+                try:
+                    o.select_set(True)
+                except ReferenceError:
+                    pass
+            if original_active:
+                try:
+                    view_layer.objects.active = original_active
+                except ReferenceError:
+                    pass
 
 def image_to_base64(filepath):
     """
