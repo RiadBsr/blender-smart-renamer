@@ -67,7 +67,7 @@ def register():
             ('FRONT', "Front Only", "Faster, less detail"),
             ('FRONT_BACK', "Front & Back", "Slower, better accuracy"),
         ],
-        default='FRONT_BACK'
+        default='FRONT'
     )
     
     bpy.types.Scene.smart_renamer_include_context = bpy.props.BoolProperty(
