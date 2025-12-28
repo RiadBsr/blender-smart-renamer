@@ -144,20 +144,29 @@ def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name,
     except Exception as e:
         return {'obj_name': obj_name, 'error': str(e)}
 
-def batch_worker(api_key, naming_style):
+def batch_worker(api_key, naming_style, shared_recent_names, names_lock, fast_mode=False):
     print("Smart Renamer: Batch worker started.")
     
-    # Start with the best model
-    current_model_index = 0
-    recent_names = []
+    # Start with the best model (or fast model if requested)
+    # Index 0 = 27b (Best)
+    # Index 2 = 4b (Fast)
+    current_model_index = 2 if fast_mode else 0
     
-    while not task_queue.empty():
-        item = task_queue.get()
+    while True:
+        try:
+            item = task_queue.get_nowait()
+        except queue.Empty:
+            break
+            
         obj_name = item['obj_name']
         images_b64 = item['images_b64']
         context_text = item.get('context', "")
         collection_name = item.get('collection_name', "")
         dimensions = item.get('dimensions', "")
+        
+        # Get recent names safely
+        with names_lock:
+            current_context_names = list(shared_recent_names)
         
         # Try to process
         success = False
@@ -169,7 +178,7 @@ def batch_worker(api_key, naming_style):
             
             result = send_gemini_request(
                 api_key, images_b64, naming_style, obj_name, current_model, 
-                context_text, collection_name, dimensions, recent_names
+                context_text, collection_name, dimensions, current_context_names
             )
             
             if result.get('status_code') == 429:
@@ -191,7 +200,8 @@ def batch_worker(api_key, naming_style):
                 success = True
                 result_queue.put(result)
                 if 'new_name' in result:
-                    recent_names.append(result['new_name'])
+                    with names_lock:
+                        shared_recent_names.append(result['new_name'])
         
         task_queue.task_done()
         # No sleep here! We go as fast as possible.
@@ -263,6 +273,7 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         context_text = getattr(scene, "smart_renamer_context", "")
         view_mode = getattr(scene, "smart_renamer_view_mode", 'FRONT_BACK')
         include_context = getattr(scene, "smart_renamer_include_context", True)
+        fast_mode = getattr(scene, "smart_renamer_fast_mode", False)
         
         if not api_key:
             self.report({'ERROR'}, "Please configure API Key in Addon Preferences")
@@ -349,14 +360,22 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
             
         scene.smart_renamer_status = f"Processing... (0/{total_tasks_count})"
 
-        # 2. Start ONE worker thread to process the queue
+        # 2. Start worker threads
+        shared_recent_names = []
+        names_lock = threading.Lock()
         
-        thread = threading.Thread(
-            target=batch_worker,
-            args=(api_key, naming_style)
-        )
-        thread.daemon = True
-        thread.start()
+        # Spin up 2 workers for parallel processing
+        # This doubles throughput but increases risk of 429 errors.
+        # The fallback strategy in batch_worker handles 429s by switching models.
+        num_workers = 2
+        
+        for _ in range(num_workers):
+            thread = threading.Thread(
+                target=batch_worker,
+                args=(api_key, naming_style, shared_recent_names, names_lock, fast_mode)
+            )
+            thread.daemon = True
+            thread.start()
             
         self.report({'INFO'}, f"Queued {tasks_added} objects for analysis...")
         return {'FINISHED'}

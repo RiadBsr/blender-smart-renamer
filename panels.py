@@ -29,14 +29,15 @@ class SMART_RENAMER_PT_main_panel(bpy.types.Panel):
         box = layout.box()
         box.label(text="Configuration", icon='PREFERENCES')
         
-        col = box.column(align=True)
-        col.prop(scene, "smart_renamer_naming_style", text="Style")
-        col.prop(scene, "smart_renamer_view_mode", text="Views")
-        box.prop(scene, "smart_renamer_include_context", text="Include Context View", toggle=True)
-        
         box.separator()
         box.prop(scene, "smart_renamer_context", text="Context", icon='INFO')
-
+        
+        box.prop(scene, "smart_renamer_naming_style", text="Style")
+        box.prop(scene, "smart_renamer_view_mode", text="Views")
+        
+        box.prop(scene, "smart_renamer_include_context", text="Include Context View")
+        box.prop(scene, "smart_renamer_fast_mode", text="Fast Mode")
+        
         layout.separator()
 
         # Action Section

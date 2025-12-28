@@ -88,6 +88,12 @@ def register():
         default=False
     )
 
+    bpy.types.Scene.smart_renamer_fast_mode = bpy.props.BoolProperty(
+        name="Fast Mode",
+        description="Use smaller, faster models (4b) instead of high-quality ones (27b). Good for simple objects.",
+        default=False
+    )
+
 def unregister():
     if hasattr(bpy.types.Scene, "smart_renamer_api_key"):
         del bpy.types.Scene.smart_renamer_api_key
@@ -103,6 +109,8 @@ def unregister():
         del bpy.types.Scene.smart_renamer_status
     if hasattr(bpy.types.Scene, "smart_renamer_is_processing"):
         del bpy.types.Scene.smart_renamer_is_processing
+    if hasattr(bpy.types.Scene, "smart_renamer_fast_mode"):
+        del bpy.types.Scene.smart_renamer_fast_mode
     
     bpy.utils.unregister_class(SMART_RENAMER_PT_main_panel)
     bpy.utils.unregister_class(SMART_RENAMER_OT_analyze_rename)
