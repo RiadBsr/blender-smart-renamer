@@ -300,6 +300,9 @@ class SMART_RENAMER_OT_analyze_rename(bpy.types.Operator):
         scene.smart_renamer_is_processing = True
         scene.smart_renamer_status = "Capturing images..."
         
+        # Force UI update so the user sees the status change before freezing
+        bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+        
         # Register timer if not already running
         if not bpy.app.timers.is_registered(process_queue_timer):
             bpy.app.timers.register(process_queue_timer)
