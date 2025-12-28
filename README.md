@@ -9,7 +9,7 @@
 *   **Multi-View Capture**: Automatically takes Front and Back isolated views for 360° understanding.
 *   **Smart Batch Processing**: Renames hundreds of objects efficiently using a cascading model strategy (27b → 1b) to maximize speed and handle rate limits.
 *   **Consistency Engine**: Remembers names used within the current batch to ensure identical objects get identical names (e.g., naming all "Pistons" consistently instead of mixing "Piston", "Cylinder", and "EnginePart").
-*   **Professional Naming Conventions**: Supports Snake_Case, CamelCase, Unreal Engine Prefixes (SM_), and Descriptive styles.
+*   **Professional Naming Conventions**: Supports Snake_Case, CamelCase, lowerCamelCase, UPPER_SNAKE_CASE, Kebab-Case, Unreal Engine Prefixes (SM_), and Descriptive styles.
 
 ## Installation
 
@@ -54,6 +54,26 @@ The addon is located in the **3D Viewport Sidebar (N-Panel)** under the **Smart 
 *   Active Internet connection (for API access).
 *   Valid Google Gemini API Key.
 
+## Privacy & Data Usage
+
+We believe in total transparency regarding your data.
+
+1.  **Open Source Model Architecture:**
+    *   This addon utilizes Google's **Gemma 3**, an open-weights model family. This means the underlying technology analyzing your images is based on transparent, publicly available research, not a closed "black box."
+
+2.  **What is sent?**
+    *   The addon sends **temporary, low-resolution (384px) 2D screenshots** of your selected objects to the Google Gemini API.
+    *   It sends the text prompts you provide (e.g., "Context: Sci-Fi").
+
+3.  **What is NOT sent?**
+    *   **No 3D Geometry:** Your actual 3D mesh data (vertices, polygons), UVs, and textures are **never** uploaded. It is impossible to reconstruct or "steal" your 3D asset from the data sent.
+    *   **No Scene Data:** Only the selected objects are captured. The rest of your scene remains private.
+
+4.  **Google's Data Policy:**
+    *   This addon uses the Google Gemini API. By using a free API key, you are subject to [Google's Generative AI Terms](https://ai.google.dev/gemini-api/terms).
+    *   **Note:** Data sent via the **Unpaid (Free)** tier of the Gemini API may be used by Google to improve their products.
+    *   **For Studios:** If you require strict data privacy where data is *not* used for training, we recommend using a Google Cloud Enterprise/Paid API key, which is subject to different data retention policies.
+
 ## License
 
-MIT License. Free to use for personal and commercial projects.
+**GPL-3.0**. This addon is designed for Blender and shares its license. You are free to modify and distribute it under the terms of the GNU General Public License.

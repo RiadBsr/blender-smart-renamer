@@ -43,7 +43,10 @@ def register():
         description="Select the naming convention",
         items=[
             ('Snake_Case', "Snake_Case", "e.g. sci_fi_crate"),
-            ('CamelCase', "CamelCase", "e.g. SciFiCrate"),
+            ('CamelCase', "PascalCase (Camel)", "e.g. SciFiCrate"),
+            ('lowerCamelCase', "lowerCamelCase", "e.g. sciFiCrate"),
+            ('UPPER_SNAKE_CASE', "UPPER_SNAKE_CASE", "e.g. SCI_FI_CRATE"),
+            ('Kebab-Case', "Kebab-Case", "e.g. sci-fi-crate"),
             ('Unreal_Prefix', "Unreal_Prefix", "e.g. SM_Crate"),
             ('Descriptive', "Descriptive", "Natural language description"),
         ],

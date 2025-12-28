@@ -25,7 +25,10 @@ GEMMA_MODELS = [
 
 NAMING_STYLE_DESCRIPTIONS = {
     'Snake_Case': "lowercase words separated by underscores (e.g., `sci_fi_crate`).",
-    'CamelCase': "Capitalized words concatenated without spaces (e.g., `SciFiCrate`).",
+    'CamelCase': "Capitalized words concatenated without spaces (PascalCase) (e.g., `SciFiCrate`).",
+    'lowerCamelCase': "First word lowercase, subsequent words capitalized (e.g., `sciFiCrate`).",
+    'UPPER_SNAKE_CASE': "Uppercase words separated by underscores (e.g., `SCI_FI_CRATE`).",
+    'Kebab-Case': "Lowercase words separated by hyphens (e.g., `sci-fi-crate`).",
     'Unreal_Prefix': "Asset type prefix followed by PascalCase (e.g., `SM_Crate` for static meshes).",
     'Descriptive': "A short, natural language description (e.g., `Old Wooden Crate`)."
 }
