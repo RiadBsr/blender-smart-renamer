@@ -7,7 +7,7 @@
 *   **AI Vision Analysis**: Uses Google's **Gemma 3** vision models to understand 3D geometry.
 *   **Context-Aware**: Captures not just the object, but its surroundings (using X-Ray/Wireframe overlays) to understand scale and usage.
 *   **Multi-View Capture**: Automatically takes Front and Back isolated views for 360° understanding.
-*   **Smart Batch Processing**: Renames hundreds of objects efficiently using a cascading model strategy (27b → 1b) to maximize speed and handle rate limits.
+*   **Smart Batch Processing**: Renames hundreds of objects efficiently using a cascading model strategy (27b → 4b) to maximize speed and handle rate limits.
 *   **Consistency Engine**: Remembers names used within the current batch to ensure identical objects get identical names (e.g., naming all "Pistons" consistently instead of mixing "Piston", "Cylinder", and "EnginePart").
 *   **Professional Naming Conventions**: Supports Snake_Case, CamelCase, lowerCamelCase, UPPER_SNAKE_CASE, Kebab-Case, Unreal Engine Prefixes (SM_), and Descriptive styles.
 
