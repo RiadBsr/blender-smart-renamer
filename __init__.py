@@ -90,7 +90,7 @@ def register():
 
     bpy.types.Scene.smart_renamer_fast_mode = bpy.props.BoolProperty(
         name="Fast Mode",
-        description="Use smaller, faster models (4b) instead of high-quality ones (27b). Good for simple objects.",
+        description="Prioritize speed: start with fast models (4b) and upgrade to larger ones if rate limits allow. Standard mode starts with high-quality models and downgrades for reliability.",
         default=False
     )
 
