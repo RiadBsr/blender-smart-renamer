@@ -59,7 +59,7 @@ def send_gemini_request(api_key, images_b64, naming_style, obj_name, model_name,
             f"- Dimensions: {dimensions}\n\n"
             f"Naming Rules:\n"
             f"1. Style: {naming_style} ({style_desc})\n"
-            f"2. Be descriptive but concise. Avoid generic names like 'Cube' or 'Mesh'.\n"
+            f"2. Be descriptive but concise. Avoid generic names like 'Cube' or 'Mesh'. Do not include color in the names.\n"
             f"3. Return ONLY a JSON object: {{\"name\": \"new_name\"}}.\n"
         )
         
