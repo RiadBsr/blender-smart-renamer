@@ -8,7 +8,7 @@ bl_info = {
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "View3D > Sidebar > Smart Renamer",
-    "description": "Renames objects using Gemini Vision AI",
+    "description": "Renames objects using Vision AI",
     "category": "Object",
 }
 
