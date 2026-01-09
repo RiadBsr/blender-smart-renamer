@@ -1,4 +1,5 @@
 import bpy
+import webbrowser
 from .operators import SMART_RENAMER_OT_analyze_rename
 from .panels import SMART_RENAMER_PT_main_panel
 
@@ -11,6 +12,15 @@ bl_info = {
     "description": "Renames objects using Vision AI",
     "category": "Object",
 }
+
+class SMART_RENAMER_OT_open_gemini_api(bpy.types.Operator):
+    """Open Google Gemini API page to get an API key"""
+    bl_idname = "wm.open_gemini_api"
+    bl_label = "Get API Key"
+
+    def execute(self, context):
+        webbrowser.open("aistudio.google.com/api-keys")
+        return {'FINISHED'}
 
 class SmartRenamerPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -25,11 +35,19 @@ class SmartRenamerPreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "api_key")
-        layout.label(text="Get your API key from Google AI Studio")
+        
+        if not self.api_key.strip():
+            box = layout.box()
+            box.label(text="API Key Required", icon='ERROR')
+            box.label(text="Get your free API key from Google AI Studio:")
+            box.operator("wm.open_gemini_api", text="Open Gemini API Page", icon='URL')
+        else:
+            layout.label(text="API Key configured", icon='CHECKMARK')
 
 def register():
     try:
         bpy.utils.register_class(SmartRenamerPreferences)
+        bpy.utils.register_class(SMART_RENAMER_OT_open_gemini_api)
         bpy.utils.register_class(SMART_RENAMER_OT_analyze_rename)
         bpy.utils.register_class(SMART_RENAMER_PT_main_panel)
     except ValueError:
@@ -105,6 +123,7 @@ def unregister():
     
     bpy.utils.unregister_class(SMART_RENAMER_PT_main_panel)
     bpy.utils.unregister_class(SMART_RENAMER_OT_analyze_rename)
+    bpy.utils.unregister_class(SMART_RENAMER_OT_open_gemini_api)
     bpy.utils.unregister_class(SmartRenamerPreferences)
 
 
