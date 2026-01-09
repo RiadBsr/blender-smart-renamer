@@ -149,9 +149,17 @@ def take_isolated_screenshot(obj, context, view_angle='FRONT', session=None):
         camera_pos = center + direction * distance
         temp_cam_obj.location = camera_pos
         
-        # Adjust clipping to ensure large objects are visible
-        # Distance to center + radius covers the back of the object. 
-        # We add some margin.
+        # Adjust clipping to ensure both very small and very large objects are visible
+        # For very small objects reduce the near clip so close-up shots include the object
+        try:
+            desired_clip_start = max(0.00001, radius * 0.02)
+            if cam_data.clip_start > desired_clip_start:
+                cam_data.clip_start = desired_clip_start
+        except Exception:
+            # If camera data doesn't expose clip_start, ignore
+            pass
+
+        # Distance to center + radius covers the back of the object. We add some margin.
         required_clip_end = distance + radius * 2.0
         # Default clip_end is often 100m or 1000m. If object is huge, we need more.
         if cam_data.clip_end < required_clip_end:
@@ -304,6 +312,14 @@ def take_context_screenshot(obj, context, session=None):
         camera_pos = center + direction * distance
         temp_cam_obj.location = camera_pos
         
+        # Ensure near clip is small enough for tiny objects when doing context shots
+        try:
+            desired_clip_start = max(0.00001, radius * 0.02)
+            if cam_data.clip_start > desired_clip_start:
+                cam_data.clip_start = desired_clip_start
+        except Exception:
+            pass
+
         required_clip_end = distance + radius * 4.0 # More depth for context
         if cam_data.clip_end < required_clip_end:
             cam_data.clip_end = required_clip_end
